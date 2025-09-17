@@ -182,7 +182,7 @@ with st.expander("📥 Configurações de Entrada"):
     with col2:
         antenna_gain = st.number_input("Ganho da antena (dBi)", value=0.0, step=0.1)
     with col3:
-        freq_input = st.number_input("Frequência de trabalho (MHz)", value=100.500, format="%.3f")
+        freq_input = st.number_input("Frequência de trabalho (MHz)", format="%.3f")
     with col4:
         tolerance = st.number_input("Tolerância (MHz)", min_value=0.0001, value=0.001, step=0.0001)
 
@@ -193,7 +193,6 @@ with st.expander("📥 Configurações de Entrada"):
         min_db = st.number_input("Valor mínimo de intensidade (dB)", min_value=-100, max_value=0, value=-50, step=1)
 
     show_beamwidth = st.checkbox("📐 Mostrar largura de feixe a -3 dB", value=True)
-    # Colocando "Tamanho do título", "Tamanho base da fonte" e "Fonte do gráfico" na mesma linha
     col7, col8, col9 = st.columns([1, 1, 1])
     with col7:
         title_fontsize = st.number_input("Tamanho do título", value=14)
@@ -243,7 +242,37 @@ if 'df_final' in locals() and not df_final.empty:
                      title_fontsize=title_fontsize, base_fontsize=base_fontsize, font_family=title_font)
     st.pyplot(fig)
 
+    # --- Botões para download da imagem ---
+    import io
+    # PNG
+    img_bytes = io.BytesIO()
+    fig.savefig(img_bytes, format="png", dpi=300, bbox_inches="tight")
+    st.download_button(
+        label="📥 Baixar gráfico (PNG)",
+        data=img_bytes.getvalue(),
+        file_name=f"{antenna_name}.png",
+        mime="image/png"
+    )
+    # PDF
+    pdf_bytes = io.BytesIO()
+    fig.savefig(pdf_bytes, format="pdf", bbox_inches="tight")
+    st.download_button(
+        label="📥 Baixar gráfico (PDF)",
+        data=pdf_bytes.getvalue(),
+        file_name=f"{antenna_name}.pdf",
+        mime="application/pdf"
+    )
+
     st.subheader("📄 Tabela de Resultados")
     st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
+
+    # --- Botão para download do CSV ---
+    csv_bytes = df_final.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Baixar resultados (CSV)",
+        data=csv_bytes,
+        file_name=f"{antenna_name}.csv",
+        mime="text/csv"
+    )
 else:
     st.warning("Nenhum dado correspondente à frequência informada foi encontrado.")
