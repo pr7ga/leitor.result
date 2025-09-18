@@ -211,7 +211,23 @@ with st.expander("📥 Configurações de Entrada"):
 
 # Processamento
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
-    uploaded_files = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True)
+    # uploaded_files = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True)
+    # Inicializar session_state para arquivos, se não existir
+    if 'uploaded_files' not in st.session_state:
+        st.session_state.uploaded_files = []
+    
+    # Botão para descartar arquivos carregados
+    if st.button("🗑️ Descartar arquivos carregados"):
+        st.session_state.uploaded_files = []
+        st.experimental_rerun()
+    
+    # File uploader usando session_state
+    uploaded_files = st.file_uploader(
+        "Arquivos .Result:",
+        type=["Result"],
+        accept_multiple_files=True,
+        key="uploaded_files"
+    )
 
     if uploaded_files and freq_input:
         col1, col2 = st.columns([2, 1])
