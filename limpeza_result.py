@@ -150,8 +150,8 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     ax.fill(angles_rad, interp_db, alpha=0.3)
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
-    ax.set_title(f"{antenna_name}", va='bottom', pad=20)
-    fig.text(0.5, 0.90, "Diagrama de Radiação Normalizado", ha='center', fontsize=base_fontsize-2, color='black')
+    ax.set_title(f"{antenna_name}", va='bottom', pad=60)  # empurra o título mais para cima
+    fig.text(0.5, 0.88, "Diagrama de Radiação Normalizado", ha='center', fontsize=base_fontsize-2, color='black')
 
     ax.set_rticks([-100, -90, -80, -70, -60, -50, -40, -30, -20, -10])
     ax.tick_params(axis='y', length=0, labelsize=0, colors='gray')
