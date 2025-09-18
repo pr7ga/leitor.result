@@ -267,9 +267,6 @@ if 'df_final' in locals() and not df_final.empty:
         mime="application/pdf"
     )
 
-    st.subheader("📄 Tabela de Resultados")
-    st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
-
     # --- Botão para download do CSV ---
     csv_bytes = df_final.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -278,5 +275,8 @@ if 'df_final' in locals() and not df_final.empty:
         file_name=f"{antenna_name}.csv",
         mime="text/csv"
     )
+    st.subheader("📄 Tabela de Resultados")
+    st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
+    
 else:
     st.warning("Nenhum dado correspondente à frequência informada foi encontrado.")
