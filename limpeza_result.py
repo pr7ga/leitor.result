@@ -46,9 +46,7 @@ def read_df(file):
     table = [row for row in table_raw if len(row) == num_cols]
     df = pd.DataFrame(table, columns=col_names)
 
-    # Converter apenas colunas que são numéricas
-    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite',
-                    'Height', 'Azimuth', 'Attenuation']
+    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite', 'Height', 'Azimuth', 'Attenuation']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -203,46 +201,49 @@ with st.expander("📥 Configurações de Entrada"):
     with col9:
         title_font = st.selectbox("Fonte do gráfico", ["sans-serif", "serif", "monospace", "Arial", "Times New Roman"])
 
-# --- Botão "Limpar todos" antes do expander ---
+# --- Botão "Limpar todos" ---
+if '_clear_all_marker' not in st.session_state:
+    st.session_state['_clear_all_marker'] = 0
+
 if st.button("🗑️ Limpar todos os arquivos"):
-    st.session_state['_clear_all_marker'] = st.session_state.get('_clear_all_marker', 0) + 1
-    st.experimental_rerun()
+    st.session_state['_clear_all_marker'] += 1
 
 # Processamento
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
     uploaded_files = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True)
 
-    # Se houver o marcador de limpeza, zerar os arquivos carregados
+    # Se o usuário clicou em limpar, ignoramos os arquivos carregados
     if st.session_state.get('_clear_all_marker', 0) > 0:
         uploaded_files = []
-
-    if uploaded_files and freq_input:
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.info(f"Buscando valores próximos de {freq_input:.3f} MHz (±{tolerance:.4f} MHz)")
-        with col2:
-            st.success(f"{len(uploaded_files)} arquivo(s) carregado(s).")
-
+        df_final = pd.DataFrame()  # limpa resultados anteriores
+    else:
         df_final = pd.DataFrame(columns=['dBμV/m', 'Polarization', 'Azimuth', 'Filename', 'Power-dBm'])
 
-        for file in uploaded_files:
-            df = read_df(file)
-            if df.empty:
-                continue
+        if uploaded_files and freq_input:
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.info(f"Buscando valores próximos de {freq_input:.3f} MHz (±{tolerance:.4f} MHz)")
+            with col2:
+                st.success(f"{len(uploaded_files)} arquivo(s) carregado(s).")
 
-            df_filtered = filter_by_frequency(df, freq_input, tol=tolerance)
-            if not df_filtered.empty:
-                row = df_filtered.iloc[0]
-                df_final.loc[len(df_final)] = [
-                    row['dBμV/m'],
-                    row['Polarization'],
-                    row['Azimuth'],
-                    file.name,
-                    None
-                ]
+            for file in uploaded_files:
+                df = read_df(file)
+                if df.empty:
+                    continue
+
+                df_filtered = filter_by_frequency(df, freq_input, tol=tolerance)
+                if not df_filtered.empty:
+                    row = df_filtered.iloc[0]
+                    df_final.loc[len(df_final)] = [
+                        row['dBμV/m'],
+                        row['Polarization'],
+                        row['Azimuth'],
+                        file.name,
+                        None
+                    ]
 
 # Exibição do gráfico e tabela (fora do expander)
-if 'df_final' in locals() and not df_final.empty:
+if not df_final.empty:
     df_final = clean_and_convert(df_final)
     df_final = rotate_azimuth(df_final, azimuth_offset)
     df_final = normalize_clwr(df_final)
