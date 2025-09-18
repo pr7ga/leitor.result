@@ -243,7 +243,7 @@ with st.expander("🔍 Processamento dos Arquivos", expanded=True):
                     ]
 
 # Exibição do gráfico e tabela (fora do expander)
-if not df_final.empty:
+if st.session_state.get('_clear_all_marker', 0) == 0 and not df_final.empty:
     df_final = clean_and_convert(df_final)
     df_final = rotate_azimuth(df_final, azimuth_offset)
     df_final = normalize_clwr(df_final)
@@ -254,7 +254,6 @@ if not df_final.empty:
     st.pyplot(fig)
 
     # --- Botões para download da imagem ---
-    # PNG
     img_bytes = io.BytesIO()
     fig.savefig(img_bytes, format="png", dpi=300, bbox_inches="tight")
     st.download_button(
@@ -263,7 +262,7 @@ if not df_final.empty:
         file_name=f"{antenna_name}.png",
         mime="image/png"
     )
-    # PDF
+
     pdf_bytes = io.BytesIO()
     fig.savefig(pdf_bytes, format="pdf", bbox_inches="tight")
     st.download_button(
@@ -281,8 +280,11 @@ if not df_final.empty:
         file_name=f"{antenna_name}.csv",
         mime="text/csv"
     )
+
     st.subheader("📄 Tabela de Resultados")
     st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
     
+elif st.session_state.get('_clear_all_marker', 0) > 0:
+    st.info("📂 Todos os arquivos foram limpos. Faça upload de novos arquivos para processar.")
 else:
     st.warning("Nenhum dado correspondente à frequência informada foi encontrado.")
