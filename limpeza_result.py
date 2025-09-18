@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import re
+import io
 
 # --- Funções de leitura e processamento ---
 
@@ -45,9 +46,7 @@ def read_df(file):
     table = [row for row in table_raw if len(row) == num_cols]
     df = pd.DataFrame(table, columns=col_names)
 
-    # Converter apenas colunas que são numéricas
-    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite',
-                    'Height', 'Azimuth', 'Attenuation']
+    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite', 'Height', 'Azimuth', 'Attenuation']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -150,8 +149,8 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     ax.fill(angles_rad, interp_db, alpha=0.3)
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
-    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)  # título principal
-    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")  # subtítulo logo abaixo em cinza
+    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)
+    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")
 
     ax.set_rticks([-100, -90, -80, -70, -60, -50, -40, -30, -20, -10])
     ax.tick_params(axis='y', length=0, labelsize=0, colors='gray')
@@ -205,20 +204,30 @@ with st.expander("📥 Configurações de Entrada"):
 # --- Processamento com botão de descartar arquivos ---
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
 
-    if "uploaded_files" not in st.session_state:
-        st.session_state.uploaded_files = []
+    # Inicializa a lista de arquivos no session_state
+    if "uploaded_files_list" not in st.session_state:
+        st.session_state.uploaded_files_list = []
 
+    # Botão para descartar arquivos
     if st.button("🗑️ Descartar arquivos carregados"):
-        st.session_state.uploaded_files = []
+        st.session_state.uploaded_files_list = []
         st.success("Arquivos descartados. Você pode carregar novos arquivos.")
 
-    uploaded_files = st.file_uploader(
+    # File uploader (sem chave conflitante)
+    new_files = st.file_uploader(
         "Arquivos .Result:",
         type=["Result"],
-        accept_multiple_files=True,
-        key="uploaded_files"
+        accept_multiple_files=True
     )
 
+    # Adiciona novos arquivos à lista do session_state
+    if new_files:
+        st.session_state.uploaded_files_list.extend(new_files)
+
+    # Lista de arquivos atualmente válidos
+    uploaded_files = st.session_state.uploaded_files_list
+
+    # Processa apenas se houver arquivos e frequência definida
     if uploaded_files and freq_input:
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -255,7 +264,6 @@ if 'df_final' in locals() and not df_final.empty:
                      title_fontsize=title_fontsize, base_fontsize=base_fontsize, font_family=title_font)
     st.pyplot(fig)
 
-    import io
     # PNG
     img_bytes = io.BytesIO()
     fig.savefig(img_bytes, format="png", dpi=300, bbox_inches="tight")
