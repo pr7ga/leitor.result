@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import re
+import io
 
 # --- Funções de leitura e processamento ---
 
@@ -150,21 +151,15 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     ax.fill(angles_rad, interp_db, alpha=0.3)
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
-    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)  # título principal
-    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")  # subtítulo logo abaixo em cinza claro
-
-
-
+    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)
+    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")
 
     ax.set_rticks([-100, -90, -80, -70, -60, -50, -40, -30, -20, -10])
     ax.tick_params(axis='y', length=0, labelsize=0, colors='gray')
     for level in [-100, -90, -80, -70, -60, -50, -40, -30, -20, -10]:
         ax.text(np.deg2rad(0), level, f"{level}", ha='left', fontsize=base_fontsize, color='brown', va='center')
 
-    # ax.set_xticks(np.deg2rad([0, 45, 90, 135, 180, 225, 270, 315]))
-    # ax.set_xticklabels(['0°', '45°', '90°', '135°', '180°', '225°', '270°', '315°'])
-    
-    ax.set_xticks(np.deg2rad(np.arange(0, 360, 30)))  # 0,30,60,...330
+    ax.set_xticks(np.deg2rad(np.arange(0, 360, 30)))
     ax.set_xticklabels([f"{angle}°" for angle in np.arange(0, 360, 30)])
                
     if show_beamwidth and angle1 is not None and angle2 is not None:
@@ -207,11 +202,19 @@ with st.expander("📥 Configurações de Entrada"):
         base_fontsize = st.number_input("Tamanho base da fonte", value=10)
     with col9:
         title_font = st.selectbox("Fonte do gráfico", ["sans-serif", "serif", "monospace", "Arial", "Times New Roman"])
-        
+
+# --- Botão "Limpar todos" antes do expander ---
+if st.button("🗑️ Limpar todos os arquivos"):
+    st.session_state['_clear_all_marker'] = st.session_state.get('_clear_all_marker', 0) + 1
+    st.experimental_rerun()
 
 # Processamento
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
     uploaded_files = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True)
+
+    # Se houver o marcador de limpeza, zerar os arquivos carregados
+    if st.session_state.get('_clear_all_marker', 0) > 0:
+        uploaded_files = []
 
     if uploaded_files and freq_input:
         col1, col2 = st.columns([2, 1])
@@ -250,7 +253,6 @@ if 'df_final' in locals() and not df_final.empty:
     st.pyplot(fig)
 
     # --- Botões para download da imagem ---
-    import io
     # PNG
     img_bytes = io.BytesIO()
     fig.savefig(img_bytes, format="png", dpi=300, bbox_inches="tight")
