@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import re
-import io
 
 # --- Funções de leitura e processamento ---
 
@@ -46,7 +45,9 @@ def read_df(file):
     table = [row for row in table_raw if len(row) == num_cols]
     df = pd.DataFrame(table, columns=col_names)
 
-    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite', 'Height', 'Azimuth', 'Attenuation']
+    # Converter apenas colunas que são numéricas
+    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite',
+                    'Height', 'Azimuth', 'Attenuation']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -149,17 +150,23 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     ax.fill(angles_rad, interp_db, alpha=0.3)
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
-    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)
-    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")
+    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)  # título principal
+    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")  # subtítulo logo abaixo em cinza claro
+
+
+
 
     ax.set_rticks([-100, -90, -80, -70, -60, -50, -40, -30, -20, -10])
     ax.tick_params(axis='y', length=0, labelsize=0, colors='gray')
     for level in [-100, -90, -80, -70, -60, -50, -40, -30, -20, -10]:
         ax.text(np.deg2rad(0), level, f"{level}", ha='left', fontsize=base_fontsize, color='brown', va='center')
-    
-    ax.set_xticks(np.deg2rad(np.arange(0, 360, 30)))
-    ax.set_xticklabels([f"{angle}°" for angle in np.arange(0, 360, 30)])
 
+    # ax.set_xticks(np.deg2rad([0, 45, 90, 135, 180, 225, 270, 315]))
+    # ax.set_xticklabels(['0°', '45°', '90°', '135°', '180°', '225°', '270°', '315°'])
+    
+    ax.set_xticks(np.deg2rad(np.arange(0, 360, 30)))  # 0,30,60,...330
+    ax.set_xticklabels([f"{angle}°" for angle in np.arange(0, 360, 30)])
+               
     if show_beamwidth and angle1 is not None and angle2 is not None:
         for angle in [angle1, angle2]:
             ax.plot([np.deg2rad(angle)] * 2, [min_db, 0], linestyle='--', color='red')
@@ -200,34 +207,24 @@ with st.expander("📥 Configurações de Entrada"):
         base_fontsize = st.number_input("Tamanho base da fonte", value=10)
     with col9:
         title_font = st.selectbox("Fonte do gráfico", ["sans-serif", "serif", "monospace", "Arial", "Times New Roman"])
+        
 
-# --- Processamento com botão de descartar arquivos ---
+# Processamento
+# Processamento
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
 
-    # Inicializa a lista de arquivos no session_state
-    if "uploaded_files_list" not in st.session_state:
-        st.session_state.uploaded_files_list = []
-
-    # Botão para descartar arquivos
+    # Botão para descartar arquivos carregados
     if st.button("🗑️ Descartar arquivos carregados"):
-        st.session_state.uploaded_files_list = []
-        st.success("Arquivos descartados. Você pode carregar novos arquivos.")
+        st.experimental_rerun()  # reinicia a execução mantendo os valores dos campos
 
-    # File uploader (sem chave conflitante)
-    new_files = st.file_uploader(
+    uploaded_files = st.file_uploader(
         "Arquivos .Result:",
         type=["Result"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key="uploaded_files"
     )
 
-    # Adiciona novos arquivos à lista do session_state
-    if new_files:
-        st.session_state.uploaded_files_list.extend(new_files)
 
-    # Lista de arquivos atualmente válidos
-    uploaded_files = st.session_state.uploaded_files_list
-
-    # Processa apenas se houver arquivos e frequência definida
     if uploaded_files and freq_input:
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -264,6 +261,8 @@ if 'df_final' in locals() and not df_final.empty:
                      title_fontsize=title_fontsize, base_fontsize=base_fontsize, font_family=title_font)
     st.pyplot(fig)
 
+    # --- Botões para download da imagem ---
+    import io
     # PNG
     img_bytes = io.BytesIO()
     fig.savefig(img_bytes, format="png", dpi=300, bbox_inches="tight")
@@ -283,7 +282,7 @@ if 'df_final' in locals() and not df_final.empty:
         mime="application/pdf"
     )
 
-    # CSV
+    # --- Botão para download do CSV ---
     csv_bytes = df_final.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📥 Baixar resultados (CSV)",
@@ -291,7 +290,6 @@ if 'df_final' in locals() and not df_final.empty:
         file_name=f"{antenna_name}.csv",
         mime="text/csv"
     )
-
     st.subheader("📄 Tabela de Resultados")
     st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
     
