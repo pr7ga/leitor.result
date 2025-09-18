@@ -161,9 +161,12 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     for level in [-100, -90, -80, -70, -60, -50, -40, -30, -20, -10]:
         ax.text(np.deg2rad(0), level, f"{level}", ha='left', fontsize=base_fontsize, color='brown', va='center')
 
-    ax.set_xticks(np.deg2rad([0, 45, 90, 135, 180, 225, 270, 315]))
-    ax.set_xticklabels(['0°', '45°', '90°', '135°', '180°', '225°', '270°', '315°'])
-
+    # ax.set_xticks(np.deg2rad([0, 45, 90, 135, 180, 225, 270, 315]))
+    # ax.set_xticklabels(['0°', '45°', '90°', '135°', '180°', '225°', '270°', '315°'])
+    
+    ax.set_xticks(np.deg2rad(np.arange(0, 360, 30)))  # 0,30,60,...330
+    ax.set_xticklabels([f"{angle}°" for angle in np.arange(0, 360, 30)])
+               
     if show_beamwidth and angle1 is not None and angle2 is not None:
         for angle in [angle1, angle2]:
             ax.plot([np.deg2rad(angle)] * 2, [min_db, 0], linestyle='--', color='red')
