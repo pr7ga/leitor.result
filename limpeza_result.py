@@ -151,7 +151,7 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
     fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)  # título principal
-    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="lightgray")  # subtítulo logo abaixo em cinza claro
+    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")  # subtítulo logo abaixo em cinza claro
 
 
 
