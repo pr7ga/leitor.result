@@ -224,7 +224,7 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", subtitle="", 
 
     # título e subtítulo
     # ajusta posições dependendo se haverá legenda do feixe
-    title_y = 1.08 if subtitle else 1.03
+    title_y = 1.08 if subtitle else 1.05
     subtitle_y = 0.99 if subtitle else None
     fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=title_y)
     if subtitle:
