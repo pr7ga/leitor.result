@@ -13,33 +13,7 @@ import uuid
 # -----------------------------
 
 def read_df(file):
-    """Lê um arquivo .Result a partir de um file-like (tem .read() e .name).
-    Tenta várias decodificações e procura a seção [TableValues]. Retorna DataFrame.
-    """
-    name = getattr(file, 'name', 'arquivo')
-    try:
-        raw = file.read()
-    except Exception as e:
-        st.warning(f"Não foi possível ler {name}: {e}")
-        return pd.DataFrame()
-
-    # tenta decodificar em várias codificações comuns
-    content = None
-    for enc in ('utf-16', 'utf-8', 'latin-1'):
-        try:
-            content = raw.decode(enc)
-            break
-        except Exception:
-            content = None
-
-    if content is None:
-        try:
-            # fallback: representar bytes como string
-            content = str(raw)
-        except Exception:
-            st.warning(f"Não foi possível decodificar {name} com encodings comuns.")
-            return pd.DataFrame()
-
+    content = file.read().decode('utf-16')
     lines = content.splitlines()
 
     start_index = None
@@ -49,21 +23,19 @@ def read_df(file):
             break
 
     if start_index is None:
-        st.warning(f"[TableValues] não encontrado em {name}.")
+        st.warning(f"[TableValues] não encontrado em {file.name}.")
         return pd.DataFrame()
 
     table_data = lines[start_index:]
     table_data = [line.strip() for line in table_data if line.strip()]
-    table_raw = [line.split() for line in table_data]
+    table_raw = [re.split(r'\s+', line) for line in table_data]
 
-    # determina número de colunas (procura linha válida com pelo menos 6 colunas)
-    num_cols = None
     for row in table_raw:
         if len(row) >= 6:
             num_cols = len(row)
             break
-    if num_cols is None:
-        st.warning(f"Nenhuma linha válida encontrada em {name}.")
+    else:
+        st.warning(f"Nenhuma linha válida encontrada em {file.name}.")
         return pd.DataFrame()
 
     if num_cols == 6:
@@ -73,83 +45,57 @@ def read_df(file):
     elif num_cols == 8:
         col_names = ['Frequency', 'MaxPeak-dBμV/m', 'Average-dBμV/m', 'Height', 'Polarization', 'Azimuth', 'Attenuation', 'Comment']
     else:
-        st.error(f"Número inesperado de colunas ({num_cols}) em {name}.")
+        st.error(f"Número inesperado de colunas ({num_cols}) em {file.name}.")
         return pd.DataFrame()
 
     table = [row for row in table_raw if len(row) == num_cols]
-    if not table:
-        st.warning(f"Nenhuma linha com o número esperado de colunas ({num_cols}) em {name}.")
-        return pd.DataFrame()
-
     df = pd.DataFrame(table, columns=col_names)
 
-    # converte colunas numéricas conhecidas
-    for col in ['Frequency', 'Average-dBμV/m', 'MaxPeak-dBμV/m', 'Height', 'Azimuth', 'Attenuation']:
+    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite', 'Height', 'Azimuth', 'Attenuation']
+    for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # define coluna dBμV/m preferindo Average, senão MaxPeak
     if 'Average-dBμV/m' in df.columns and df['Average-dBμV/m'].notna().any():
         df['dBμV/m'] = df['Average-dBμV/m']
     elif 'MaxPeak-dBμV/m' in df.columns and df['MaxPeak-dBμV/m'].notna().any():
         df['dBμV/m'] = df['MaxPeak-dBμV/m']
     else:
+        st.warning("Coluna dBμV/m não encontrada ou sem dados.")
         df['dBμV/m'] = np.nan
 
     return df
 
-
 def filter_by_frequency(df, freq_mhz, tol=0.001):
     df = df.copy()
-    if 'Frequency' in df.columns:
-        df['Frequency'] = pd.to_numeric(df['Frequency'], errors='coerce')
-        return df[np.abs(df['Frequency'] - freq_mhz) <= tol]
-    else:
-        return pd.DataFrame()
-
+    df['Frequency'] = pd.to_numeric(df['Frequency'], errors='coerce')
+    return df[np.abs(df['Frequency'] - freq_mhz) <= tol]
 
 def clean_and_convert(df):
-    # remove caracteres indesejados sem usar regex complexo
-    def strip_chars(x):
-        s = str(x)
-        for ch in ('[', ']', "'", '"'):
-            s = s.replace(ch, '')
-        return s
-
-    df_cleaned = df.applymap(strip_chars)
+    df_cleaned = df.applymap(lambda x: re.sub(r"[\[\]']", '', str(x)))
     for col in df_cleaned.columns:
         try:
             df_cleaned[col] = pd.to_numeric(df_cleaned[col])
-        except Exception:
+        except:
             pass
     return df_cleaned
 
-
 def normalize_clwr(df):
-    if 'dBμV/m' in df.columns and not df['dBμV/m'].isna().all():
-        max_val = df['dBμV/m'].max()
-        df['Normalized-values'] = df['dBμV/m'] - max_val
-    else:
-        df['Normalized-values'] = np.nan
+    max_val = df['dBμV/m'].max()
+    df['Normalized-values'] = df['dBμV/m'] - max_val
     return df
-
 
 def rotate_azimuth(df, offset_degrees):
     df = df.copy()
-    if 'Azimuth' in df.columns:
-        df['Azimuth'] = (df['Azimuth'] - offset_degrees) % 360
+    df['Azimuth'] = (df['Azimuth'] - offset_degrees) % 360
     return df
-
 
 def convert_to_dBm(df, antenna_gain):
-    if 'dBμV/m' in df.columns:
-        df['Power-dBm'] = df['dBμV/m'] - 115.8 + antenna_gain
-    else:
-        df['Power-dBm'] = np.nan
+    df['Power-dBm'] = df['dBμV/m'] - 115.8 + antenna_gain
     return df
 
 
-def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
+def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", subtitle="", min_db=-50,
                title_fontsize=14, base_fontsize=10, font_family='sans-serif'):
     plt.rcParams.update({
         'font.family': font_family,
@@ -222,8 +168,13 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     ax.fill(angles_rad, interp_db, alpha=0.3)
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
-    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.02)
-    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=30, color="gray")
+
+    # título e subtítulo
+    fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=1.08)
+    if subtitle:
+        fig.text(0.5, 0.98, subtitle, ha='center', fontsize=base_fontsize, color='gray')
+
+    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=50, color="gray")
 
     ax.set_rticks([-100, -90, -80, -70, -60, -50, -40, -30, -20, -10])
     ax.tick_params(axis='y', length=0, labelsize=0, colors='gray')
@@ -236,47 +187,27 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     if show_beamwidth and angle1 is not None and angle2 is not None:
         for angle in [angle1, angle2]:
             ax.plot([np.deg2rad(angle)] * 2, [min_db, 0], linestyle='--', color='red')
-        fig.text(0.5, 0.95, f"Largura do feixe @ -3 dB: {beamwidth:.1f}°", ha='center', fontsize=base_fontsize, color='red')
+        # desloca para não sobrepor o subtítulo
+        fig.text(0.5, 0.93, f"Largura do feixe @ -3 dB: {beamwidth:.1f}°", ha='center', fontsize=base_fontsize, color='red')
 
     ax.set_ylim([min_db, 0])
     return fig
 
 
 # -----------------------------
-# Inicializa session_state
-# -----------------------------
-
-def init_state():
-    if 'files' not in st.session_state:
-        st.session_state['files'] = {}  # chave: hash -> item dict
-    if 'uploader_key' not in st.session_state:
-        st.session_state['uploader_key'] = 0
-    if 'last_cleared' not in st.session_state:
-        st.session_state['last_cleared'] = None
-
-
-init_state()
-
-
-# -----------------------------
-# Interface Streamlit
-# -----------------------------
-
-st.set_page_config("Leitor .Result", layout="centered")
-st.title("📊 Leitor de Arquivos .result (Software EMC32)")
-st.markdown("Faça upload de **múltiplos arquivos .Result** e informe a **frequência alvo em MHz**.")
-
 # Configurações de entrada
+# -----------------------------
+
 with st.expander("📥 Configurações de Entrada"):
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         antenna_name = st.text_input("Nome da Antena", value="Antena XYZ")
     with col2:
-        antenna_gain = st.number_input("Ganho da antena (dBi)", value=0.0, step=0.1)
+        antenna_subtitle = st.text_input("Subtítulo", value="")
     with col3:
-        freq_input = st.number_input("Frequência de trabalho (MHz)", format="%.3f")
+        antenna_gain = st.number_input("Ganho da antena (dBi)", value=0.0, step=0.1)
     with col4:
-        tolerance = st.number_input("Tolerância (MHz)", min_value=0.0001, value=0.001, step=0.0001)
+        freq_input = st.number_input("Frequência de trabalho (MHz)", format="%.3f")
 
     col5, col6 = st.columns([1, 1])
     with col5:
@@ -294,103 +225,20 @@ with st.expander("📥 Configurações de Entrada"):
         title_font = st.selectbox("Fonte do gráfico", ["sans-serif", "serif", "monospace", "Arial", "Times New Roman"])
 
 # -----------------------------
-# Botões: Limpar e Upload
-# -----------------------------
-colA, colB = st.columns([1, 3])
-with colA:
-    if st.button("🗑️ Limpar todos os arquivos"):
-        # limpa estrutura que guarda arquivos e incrementa a key do uploader
-        st.session_state['files'] = {}
-        st.session_state['uploader_key'] += 1
-        st.session_state['last_cleared'] = time.time()
-        # rerun para atualizar imediatamente e fazer o widget do uploader reiniciar
-        try:
-            st.rerun()
-        except Exception:
-            st.experimental_rerun()
-
-with colB:
-    st.write("")  # apenas para alinhamento
-
-with st.expander("🔍 Processamento dos Arquivos", expanded=True):
-    # usa chave dinâmica para forçar reset do widget após limpar
-    uploader_widget_key = f"uploader_{st.session_state['uploader_key']}"
-    new_uploads = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True, key=uploader_widget_key)
-
-    if new_uploads:
-        added = 0
-        skipped = 0
-        for f in new_uploads:
-            try:
-                raw = f.read()
-            except Exception as e:
-                st.error(f"Falha ao ler {f.name}: {e}")
-                continue
-
-            # calcula hash para deduplicação por conteúdo
-            h = hashlib.sha256(raw).hexdigest()
-            if h in st.session_state['files']:
-                skipped += 1
-                continue
-
-            # adiciona ao dicionário (chave = hash)
-            st.session_state['files'][h] = {
-                'id': str(uuid.uuid4()),
-                'name': f.name,
-                'bytes': raw,
-                'hash': h,
-                'added_at': time.time()
-            }
-            added += 1
-
-        if added > 0 or skipped > 0:
-            st.success(f"{added} arquivo(s) adicionados, {skipped} arquivo(s) ignorados por duplicação.")
-
-    # --- Processamento dos arquivos armazenados em session_state ---
-    df_final = pd.DataFrame(columns=['dBμV/m', 'Polarization', 'Azimuth', 'Filename', 'Power-dBm'])
-
-    files_values = list(st.session_state['files'].values())
-    if files_values and freq_input:
-        st.info(f"Buscando valores próximos de {freq_input:.3f} MHz (±{tolerance:.4f} MHz)")
-        st.success(f"{len(files_values)} arquivo(s) na fila.")
-
-        for item in files_values:
-            try:
-                buf = io.BytesIO(item['bytes'])
-                buf.name = item['name']
-                df = read_df(buf)
-            except Exception as e:
-                st.error(f"Erro ao processar {item['name']}: {e}")
-                continue
-
-            if df.empty:
-                continue
-
-            df_filtered = filter_by_frequency(df, freq_input, tol=tolerance)
-            if not df_filtered.empty:
-                row = df_filtered.iloc[0]
-                df_final.loc[len(df_final)] = [
-                    row.get('dBμV/m', np.nan),
-                    row.get('Polarization', ''),
-                    row.get('Azimuth', np.nan),
-                    item['name'],
-                    None
-                ]
-
-# -----------------------------
 # Exibição do gráfico, downloads e tabela
 # -----------------------------
-if not df_final.empty:
+
+# Supondo que df_final já tenha sido processado em etapas anteriores
+if 'df_final' in locals() and not df_final.empty:
     df_final = clean_and_convert(df_final)
     df_final = rotate_azimuth(df_final, azimuth_offset)
     df_final = normalize_clwr(df_final)
     df_final = convert_to_dBm(df_final, antenna_gain)
 
-    fig = plot_polar(df_final, show_beamwidth, antenna_name, min_db,
+    fig = plot_polar(df_final, show_beamwidth, antenna_name, antenna_subtitle, min_db,
                      title_fontsize=title_fontsize, base_fontsize=base_fontsize, font_family=title_font)
     st.pyplot(fig)
 
-    # PNG
     img_bytes = io.BytesIO()
     fig.savefig(img_bytes, format="png", dpi=300, bbox_inches="tight")
     st.download_button(
@@ -400,7 +248,6 @@ if not df_final.empty:
         mime="image/png"
     )
 
-    # PDF
     pdf_bytes = io.BytesIO()
     fig.savefig(pdf_bytes, format="pdf", bbox_inches="tight")
     st.download_button(
@@ -410,7 +257,6 @@ if not df_final.empty:
         mime="application/pdf"
     )
 
-    # CSV
     csv_bytes = df_final.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📥 Baixar resultados (CSV)",
@@ -421,9 +267,3 @@ if not df_final.empty:
 
     st.subheader("📄 Tabela de Resultados")
     st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
-
-else:
-    if files_values:
-        st.warning("Nenhum dado correspondente à frequência informada foi encontrado.")
-    else:
-        st.info("📂 Nenhum arquivo na fila. Faça upload de arquivos .Result para processar.")
