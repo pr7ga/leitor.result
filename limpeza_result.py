@@ -387,7 +387,7 @@ if not df_final.empty:
     st.download_button(
         label="📥 Baixar gráfico (PNG)",
         data=img_bytes.getvalue(),
-        file_name=f"{antenna_name}.png",
+        file_name=f"{antenna_name} - {subtitle}.png",
         mime="image/png"
     )
 
@@ -396,7 +396,7 @@ if not df_final.empty:
     st.download_button(
         label="📥 Baixar gráfico (PDF)",
         data=pdf_bytes.getvalue(),
-        file_name=f"{antenna_name}.pdf",
+        file_name=f"{antenna_name} - {subtitle}.pdf",
         mime="application/pdf"
     )
 
@@ -404,7 +404,7 @@ if not df_final.empty:
     st.download_button(
         label="📥 Baixar resultados (CSV)",
         data=csv_bytes,
-        file_name=f"{antenna_name}.csv",
+        file_name=f"{antenna_name} - {subtitle}.csv",
         mime="text/csv"
     )
 
