@@ -228,9 +228,10 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", subtitle="", 
     subtitle_y = 0.99 if subtitle else None
     fig.suptitle(f"{antenna_name}", fontsize=title_fontsize, y=title_y)
     if subtitle:
-        fig.text(0.5, subtitle_y, subtitle, ha='center', fontsize=base_fontsize, color='gray')
-
-    ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=50, color="gray")
+        # fig.text(0.5, subtitle_y, subtitle, ha='center', fontsize=base_fontsize, color='gray')
+        ax.set_title(0.5, subtitle_y, subtitle, ha='center', fontsize=base_fontsize, color='gray')
+        
+    # ax.set_title("Diagrama de Radiação Normalizado", fontsize=base_fontsize, pad=50, color="gray")
 
     ax.set_rticks([-100, -90, -80, -70, -60, -50, -40, -30, -20, -10])
     ax.tick_params(axis='y', length=0, labelsize=0, colors='gray')
