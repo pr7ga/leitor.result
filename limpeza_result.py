@@ -8,7 +8,13 @@ import io
 # --- Funções de leitura e processamento ---
 
 def read_df(file):
-    content = file.read().decode('utf-16')
+    # file: objeto com .read() -> bytes e .name
+    try:
+        content = file.read().decode('utf-16')
+    except Exception as e:
+        st.warning(f"Erro ao decodificar {getattr(file, 'name', str(file))}: {e}")
+        return pd.DataFrame()
+
     lines = content.splitlines()
 
     start_index = None
@@ -18,7 +24,7 @@ def read_df(file):
             break
 
     if start_index is None:
-        st.warning(f"[TableValues] não encontrado em {file.name}.")
+        st.warning(f"[TableValues] não encontrado em {getattr(file, 'name', 'arquivo sem nome')}.")
         return pd.DataFrame()
 
     table_data = lines[start_index:]
@@ -30,7 +36,7 @@ def read_df(file):
             num_cols = len(row)
             break
     else:
-        st.warning(f"Nenhuma linha válida encontrada em {file.name}.")
+        st.warning(f"Nenhuma linha válida encontrada em {getattr(file, 'name', 'arquivo sem nome')}.")
         return pd.DataFrame()
 
     if num_cols == 6:
@@ -40,14 +46,14 @@ def read_df(file):
     elif num_cols == 8:
         col_names = ['Frequency', 'MaxPeak-dBμV/m', 'Average-dBμV/m', 'Height', 'Polarization', 'Azimuth', 'Attenuation', 'Comment']
     else:
-        st.error(f"Número inesperado de colunas ({num_cols}) em {file.name}.")
+        st.error(f"Número inesperado de colunas ({num_cols}) em {getattr(file, 'name', 'arquivo sem nome')}.")
         return pd.DataFrame()
 
     table = [row for row in table_raw if len(row) == num_cols]
     df = pd.DataFrame(table, columns=col_names)
 
-    numeric_cols = ['Frequency', 'Average-ClearWrite', 'MaxPeak-ClearWrite', 'Height', 'Azimuth', 'Attenuation']
-    for col in numeric_cols:
+    # converte colunas numéricas conhecidas
+    for col in ['Frequency', 'Average-dBμV/m', 'MaxPeak-dBμV/m', 'Height', 'Azimuth', 'Attenuation']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
@@ -61,13 +67,15 @@ def read_df(file):
 
     return df
 
+
 def filter_by_frequency(df, freq_mhz, tol=0.001):
     df = df.copy()
     df['Frequency'] = pd.to_numeric(df['Frequency'], errors='coerce')
     return df[np.abs(df['Frequency'] - freq_mhz) <= tol]
 
+
 def clean_and_convert(df):
-    df_cleaned = df.applymap(lambda x: re.sub(r"[\[\]']", '', str(x)))
+    df_cleaned = df.applymap(lambda x: re.sub(r"[\[\]'\"]", '', str(x)))
     for col in df_cleaned.columns:
         try:
             df_cleaned[col] = pd.to_numeric(df_cleaned[col])
@@ -75,23 +83,33 @@ def clean_and_convert(df):
             pass
     return df_cleaned
 
+
 def normalize_clwr(df):
-    max_val = df['dBμV/m'].max()
-    df['Normalized-values'] = df['dBμV/m'] - max_val
+    if 'dBμV/m' in df.columns and not df['dBμV/m'].isna().all():
+        max_val = df['dBμV/m'].max()
+        df['Normalized-values'] = df['dBμV/m'] - max_val
+    else:
+        df['Normalized-values'] = np.nan
     return df
+
 
 def rotate_azimuth(df, offset_degrees):
     df = df.copy()
-    df['Azimuth'] = (df['Azimuth'] - offset_degrees) % 360
+    if 'Azimuth' in df.columns:
+        df['Azimuth'] = (df['Azimuth'] - offset_degrees) % 360
     return df
 
+
 def convert_to_dBm(df, antenna_gain):
-    df['Power-dBm'] = df['dBμV/m'] - 115.8 + antenna_gain
+    if 'dBμV/m' in df.columns:
+        df['Power-dBm'] = df['dBμV/m'] - 115.8 + antenna_gain
+    else:
+        df['Power-dBm'] = np.nan
     return df
+
 
 def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
                title_fontsize=14, base_fontsize=10, font_family='sans-serif'):
-    
     plt.rcParams.update({
         'font.family': font_family,
         'font.size': base_fontsize,
@@ -107,6 +125,11 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
 
     angles_deg = df_grouped["Azimuth"].values
     values_db = df_grouped["Normalized-values"].values
+
+    if len(angles_deg) == 0:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, 'Sem dados para plotagem', ha='center')
+        return fig
 
     if angles_deg[0] != 0 or angles_deg[-1] != 360:
         angles_deg = np.append(angles_deg, angles_deg[0] + 360)
@@ -129,9 +152,10 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
             x1, x2 = interp_az[idx], interp_az[idx + 1]
             y1, y2 = interp_db[idx], interp_db[idx + 1]
             if (y1 >= -3 and y2 <= -3) or (y1 <= -3 and y2 >= -3):
-                slope = (y2 - y1) / (x2 - x1)
-                x_cross = x1 + (-3 - y1) / slope
-                angles_3db.append(x_cross)
+                slope = (y2 - y1) / (x2 - x1) if (x2 - x1) != 0 else 0
+                if slope != 0:
+                    x_cross = x1 + (-3 - y1) / slope
+                    angles_3db.append(x_cross)
 
         angles_3db = np.array(angles_3db)
         diffs = np.abs((angles_3db - peak_angle + 180) % 360 - 180)
@@ -145,7 +169,7 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     angles_rad = np.deg2rad(interp_az)
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(6, 6))
 
-    ax.plot(angles_rad, interp_db, color='blue', linewidth=2)
+    ax.plot(angles_rad, interp_db, linewidth=2)
     ax.fill(angles_rad, interp_db, alpha=0.3)
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
@@ -167,6 +191,18 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
 
     ax.set_ylim([min_db, 0])
     return fig
+
+
+# --- Inicializa session_state ---
+
+def init_state():
+    if 'files' not in st.session_state:
+        st.session_state['files'] = []  # cada item: {'name': str, 'bytes': bytes}
+    if '_clear_all_marker' not in st.session_state:
+        st.session_state['_clear_all_marker'] = 0
+
+
+init_state()
 
 # --- Interface Streamlit ---
 
@@ -201,49 +237,78 @@ with st.expander("📥 Configurações de Entrada"):
     with col9:
         title_font = st.selectbox("Fonte do gráfico", ["sans-serif", "serif", "monospace", "Arial", "Times New Roman"])
 
-# --- Botão "Limpar todos" ---
-if '_clear_all_marker' not in st.session_state:
-    st.session_state['_clear_all_marker'] = 0
+# --- Botões de upload / limpeza ---
+colA, colB = st.columns([1, 3])
+with colA:
+    if st.button("🗑️ Limpar todos os arquivos"):
+        st.session_state['files'] = []
+        st.session_state['_clear_all_marker'] += 1
+        st.experimental_rerun()
 
-if st.button("🗑️ Limpar todos os arquivos"):
-    st.session_state['_clear_all_marker'] += 1
+with colB:
+    st.write("")  # somente para layout
 
-# Processamento
+# --- Upload: adiciona arquivos ao session_state['files'] sem perder os anteriores ---
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
-    uploaded_files = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True)
+    new_uploads = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True, key="uploader")
 
-    # Se o usuário clicou em limpar, ignoramos os arquivos carregados
-    if st.session_state.get('_clear_all_marker', 0) > 0:
-        uploaded_files = []
-        df_final = pd.DataFrame()  # limpa resultados anteriores
-    else:
-        df_final = pd.DataFrame(columns=['dBμV/m', 'Polarization', 'Azimuth', 'Filename', 'Power-dBm'])
+    if new_uploads:
+        added = 0
+        for f in new_uploads:
+            # evita duplicatas por nome; para checar conteúdo, poderia usar hash
+            if not any(x['name'] == f.name for x in st.session_state['files']):
+                try:
+                    st.session_state['files'].append({'name': f.name, 'bytes': f.read()})
+                    added += 1
+                except Exception as e:
+                    st.error(f"Falha ao ler {f.name}: {e}")
+        if added > 0:
+            # marca que há novos arquivos (reseta consequência do "limpar todos")
+            st.session_state['_clear_all_marker'] = 0
+            st.success(f"{added} arquivo(s) adicionados à fila.")
 
-        if uploaded_files and freq_input:
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.info(f"Buscando valores próximos de {freq_input:.3f} MHz (±{tolerance:.4f} MHz)")
-            with col2:
-                st.success(f"{len(uploaded_files)} arquivo(s) carregado(s).")
+    # mostra lista de arquivos atualmente armazenados
+    if st.session_state['files']:
+        st.write("**Arquivos na fila:**")
+        for i, item in enumerate(list(st.session_state['files'])):
+            cols = st.columns([6, 1])
+            cols[0].write(item['name'])
+            if cols[1].button("X", key=f"rm_{i}"):
+                st.session_state['files'].pop(i)
+                st.experimental_rerun()
 
-            for file in uploaded_files:
-                df = read_df(file)
-                if df.empty:
-                    continue
+    # --- Processamento dos arquivos armazenados em session_state ---
+    df_final = pd.DataFrame(columns=['dBμV/m', 'Polarization', 'Azimuth', 'Filename', 'Power-dBm'])
 
-                df_filtered = filter_by_frequency(df, freq_input, tol=tolerance)
-                if not df_filtered.empty:
-                    row = df_filtered.iloc[0]
-                    df_final.loc[len(df_final)] = [
-                        row['dBμV/m'],
-                        row['Polarization'],
-                        row['Azimuth'],
-                        file.name,
-                        None
-                    ]
+    if st.session_state['files'] and freq_input:
+        st.info(f"Buscando valores próximos de {freq_input:.3f} MHz (±{tolerance:.4f} MHz)")
+        st.success(f"{len(st.session_state['files'])} arquivo(s) na fila.")
 
-# Exibição do gráfico e tabela (fora do expander)
-if st.session_state.get('_clear_all_marker', 0) == 0 and not df_final.empty:
+        for item in st.session_state['files']:
+            try:
+                buf = io.BytesIO(item['bytes'])
+                buf.name = item['name']
+                df = read_df(buf)
+            except Exception as e:
+                st.error(f"Erro ao processar {item['name']}: {e}")
+                continue
+
+            if df.empty:
+                continue
+
+            df_filtered = filter_by_frequency(df, freq_input, tol=tolerance)
+            if not df_filtered.empty:
+                row = df_filtered.iloc[0]
+                df_final.loc[len(df_final)] = [
+                    row.get('dBμV/m', np.nan),
+                    row.get('Polarization', ''),
+                    row.get('Azimuth', np.nan),
+                    item['name'],
+                    None
+                ]
+
+# --- Exibição do gráfico e tabela (fora do expander) ---
+if not df_final.empty:
     df_final = clean_and_convert(df_final)
     df_final = rotate_azimuth(df_final, azimuth_offset)
     df_final = normalize_clwr(df_final)
@@ -283,8 +348,9 @@ if st.session_state.get('_clear_all_marker', 0) == 0 and not df_final.empty:
 
     st.subheader("📄 Tabela de Resultados")
     st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
-    
-elif st.session_state.get('_clear_all_marker', 0) > 0:
-    st.info("📂 Todos os arquivos foram limpos. Faça upload de novos arquivos para processar.")
+
 else:
-    st.warning("Nenhum dado correspondente à frequência informada foi encontrado.")
+    if st.session_state['files']:
+        st.warning("Nenhum dado correspondente à frequência informada foi encontrado.")
+    else:
+        st.info("📂 Nenhum arquivo na fila. Faça upload de arquivos .Result para processar.")
