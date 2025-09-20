@@ -244,7 +244,7 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", subtitle="", 
         for angle in [angle1, angle2]:
             ax.plot([np.deg2rad(angle)] * 2, [min_db, 0], linestyle='--', color='red')
         # desloca legenda do feixe para não sobrepor o subtítulo
-        y_pos = 0.93 if subtitle else 0.95
+        y_pos = 0.83 if subtitle else 0.95
         fig.text(0.5, y_pos, f"Largura do feixe @ -3 dB: {beamwidth:.1f}°", ha='center', fontsize=base_fontsize, color='red')
 
     ax.set_ylim([min_db, 0])
