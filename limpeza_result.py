@@ -4,6 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import re
 import io
+import hashlib
+import time
+import uuid
 
 # -----------------------------
 # Funções de leitura e processamento
@@ -245,7 +248,11 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
 
 def init_state():
     if 'files' not in st.session_state:
-        st.session_state['files'] = []  # cada item: {'name': str, 'bytes': bytes}
+        st.session_state['files'] = {}  # chave: hash -> item dict
+    if 'uploader_key' not in st.session_state:
+        st.session_state['uploader_key'] = 0
+    if 'last_cleared' not in st.session_state:
+        st.session_state['last_cleared'] = None
 
 
 init_state()
@@ -292,41 +299,62 @@ with st.expander("📥 Configurações de Entrada"):
 colA, colB = st.columns([1, 3])
 with colA:
     if st.button("🗑️ Limpar todos os arquivos"):
-        st.session_state['files'] = []
-        # rerun para atualizar imediatamente
+        # limpa estrutura que guarda arquivos e incrementa a key do uploader
+        st.session_state['files'] = {}
+        st.session_state['uploader_key'] += 1
+        st.session_state['last_cleared'] = time.time()
+        # rerun para atualizar imediatamente e fazer o widget do uploader reiniciar
         try:
             st.rerun()
         except Exception:
-            # fallback caso versão antiga do streamlit
             st.experimental_rerun()
 
 with colB:
     st.write("")  # apenas para alinhamento
 
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
-    new_uploads = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True, key="uploader")
+    # usa chave dinâmica para forçar reset do widget após limpar
+    uploader_widget_key = f"uploader_{st.session_state['uploader_key']}"
+    new_uploads = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True, key=uploader_widget_key)
 
     if new_uploads:
         added = 0
+        skipped = 0
         for f in new_uploads:
-            # evita duplicatas por nome; se quiser, troca por hash
-            if not any(x['name'] == f.name for x in st.session_state['files']):
-                try:
-                    st.session_state['files'].append({'name': f.name, 'bytes': f.read()})
-                    added += 1
-                except Exception as e:
-                    st.error(f"Falha ao ler {f.name}: {e}")
-        if added > 0:
-            st.success(f"{added} arquivo(s) adicionados à fila.")
+            try:
+                raw = f.read()
+            except Exception as e:
+                st.error(f"Falha ao ler {f.name}: {e}")
+                continue
+
+            # calcula hash para deduplicação por conteúdo
+            h = hashlib.sha256(raw).hexdigest()
+            if h in st.session_state['files']:
+                skipped += 1
+                continue
+
+            # adiciona ao dicionário (chave = hash)
+            st.session_state['files'][h] = {
+                'id': str(uuid.uuid4()),
+                'name': f.name,
+                'bytes': raw,
+                'hash': h,
+                'added_at': time.time()
+            }
+            added += 1
+
+        if added > 0 or skipped > 0:
+            st.success(f"{added} arquivo(s) adicionados, {skipped} arquivo(s) ignorados por duplicação.")
 
     # --- Processamento dos arquivos armazenados em session_state ---
     df_final = pd.DataFrame(columns=['dBμV/m', 'Polarization', 'Azimuth', 'Filename', 'Power-dBm'])
 
-    if st.session_state['files'] and freq_input:
+    files_values = list(st.session_state['files'].values())
+    if files_values and freq_input:
         st.info(f"Buscando valores próximos de {freq_input:.3f} MHz (±{tolerance:.4f} MHz)")
-        st.success(f"{len(st.session_state['files'])} arquivo(s) na fila.")
+        st.success(f"{len(files_values)} arquivo(s) na fila.")
 
-        for item in st.session_state['files']:
+        for item in files_values:
             try:
                 buf = io.BytesIO(item['bytes'])
                 buf.name = item['name']
@@ -395,7 +423,7 @@ if not df_final.empty:
     st.dataframe(df_final[['Filename', 'Polarization', 'Azimuth', 'dBμV/m', 'Normalized-values', 'Power-dBm']])
 
 else:
-    if st.session_state['files']:
+    if files_values:
         st.warning("Nenhum dado correspondente à frequência informada foi encontrado.")
     else:
         st.info("📂 Nenhum arquivo na fila. Faça upload de arquivos .Result para processar.")
