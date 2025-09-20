@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 import re
 import io
 
-# --- Funções de leitura e processamento ---
+# -----------------------------
+# Funções de leitura e processamento
+# -----------------------------
 
 def read_df(file):
+    """Lê um arquivo .Result a partir de um file-like (tem .read() e .name).
+    Tenta várias decodificações e procura a seção [TableValues]. Retorna DataFrame.
     """
-    Lê um arquivo .Result a partir de um file-like (tem .read() e .name)
-    Tenta diferentes decodificações e procura a seção [TableValues].
-    """
-    raw = None
     name = getattr(file, 'name', 'arquivo')
     try:
         raw = file.read()
@@ -28,8 +28,10 @@ def read_df(file):
             break
         except Exception:
             content = None
+
     if content is None:
         try:
+            # fallback: representar bytes como string
             content = str(raw)
         except Exception:
             st.warning(f"Não foi possível decodificar {name} com encodings comuns.")
@@ -49,7 +51,6 @@ def read_df(file):
 
     table_data = lines[start_index:]
     table_data = [line.strip() for line in table_data if line.strip()]
-    # usa split padrão para evitar dependência de escape em regex
     table_raw = [line.split() for line in table_data]
 
     # determina número de colunas (procura linha válida com pelo menos 6 colunas)
@@ -105,7 +106,7 @@ def filter_by_frequency(df, freq_mhz, tol=0.001):
 
 
 def clean_and_convert(df):
-    # remove [ ] ' " sem usar regex para evitar escapes
+    # remove caracteres indesejados sem usar regex complexo
     def strip_chars(x):
         s = str(x)
         for ch in ('[', ']', "'", '"'):
@@ -238,15 +239,21 @@ def plot_polar(df, show_beamwidth=True, antenna_name="Antena XYZ", min_db=-50,
     return fig
 
 
-# --- Inicializa session_state ---
+# -----------------------------
+# Inicializa session_state
+# -----------------------------
 
 def init_state():
     if 'files' not in st.session_state:
         st.session_state['files'] = []  # cada item: {'name': str, 'bytes': bytes}
 
+
 init_state()
 
-# --- Interface Streamlit ---
+
+# -----------------------------
+# Interface Streamlit
+# -----------------------------
 
 st.set_page_config("Leitor .Result", layout="centered")
 st.title("📊 Leitor de Arquivos .result (Software EMC32)")
@@ -279,23 +286,30 @@ with st.expander("📥 Configurações de Entrada"):
     with col9:
         title_font = st.selectbox("Fonte do gráfico", ["sans-serif", "serif", "monospace", "Arial", "Times New Roman"])
 
-# --- Botões de upload / limpeza ---
+# -----------------------------
+# Botões: Limpar e Upload
+# -----------------------------
 colA, colB = st.columns([1, 3])
 with colA:
     if st.button("🗑️ Limpar todos os arquivos"):
         st.session_state['files'] = []
-        st.rerun()
+        # rerun para atualizar imediatamente
+        try:
+            st.rerun()
+        except Exception:
+            # fallback caso versão antiga do streamlit
+            st.experimental_rerun()
 
 with colB:
-    st.write("")  # somente para layout
+    st.write("")  # apenas para alinhamento
 
-# --- Upload: adiciona arquivos ao session_state['files'] sem perder os anteriores ---
 with st.expander("🔍 Processamento dos Arquivos", expanded=True):
     new_uploads = st.file_uploader("Arquivos .Result:", type=["Result"], accept_multiple_files=True, key="uploader")
 
     if new_uploads:
         added = 0
         for f in new_uploads:
+            # evita duplicatas por nome; se quiser, troca por hash
             if not any(x['name'] == f.name for x in st.session_state['files']):
                 try:
                     st.session_state['files'].append({'name': f.name, 'bytes': f.read()})
@@ -304,17 +318,6 @@ with st.expander("🔍 Processamento dos Arquivos", expanded=True):
                     st.error(f"Falha ao ler {f.name}: {e}")
         if added > 0:
             st.success(f"{added} arquivo(s) adicionados à fila.")
-
-    # mostra lista de arquivos atualmente armazenados
-    if st.session_state['files']:
-        st.write("**Arquivos na fila:**")
-        for i, item in enumerate(list(st.session_state['files'])):
-            cols = st.columns([6, 1])
-            cols[0].write(item['name'])
-            # usa key único por nome+índice para evitar colisões
-            if cols[1].button("X", key=f"rm_{i}_{item['name']}"):
-                st.session_state['files'].pop(i)
-                st.rerun()
 
     # --- Processamento dos arquivos armazenados em session_state ---
     df_final = pd.DataFrame(columns=['dBμV/m', 'Polarization', 'Azimuth', 'Filename', 'Power-dBm'])
@@ -346,7 +349,9 @@ with st.expander("🔍 Processamento dos Arquivos", expanded=True):
                     None
                 ]
 
-# --- Exibição do gráfico e tabela (fora do expander) ---
+# -----------------------------
+# Exibição do gráfico, downloads e tabela
+# -----------------------------
 if not df_final.empty:
     df_final = clean_and_convert(df_final)
     df_final = rotate_azimuth(df_final, azimuth_offset)
@@ -357,7 +362,7 @@ if not df_final.empty:
                      title_fontsize=title_fontsize, base_fontsize=base_fontsize, font_family=title_font)
     st.pyplot(fig)
 
-    # --- Botões para download da imagem ---
+    # PNG
     img_bytes = io.BytesIO()
     fig.savefig(img_bytes, format="png", dpi=300, bbox_inches="tight")
     st.download_button(
@@ -367,6 +372,7 @@ if not df_final.empty:
         mime="image/png"
     )
 
+    # PDF
     pdf_bytes = io.BytesIO()
     fig.savefig(pdf_bytes, format="pdf", bbox_inches="tight")
     st.download_button(
@@ -376,7 +382,7 @@ if not df_final.empty:
         mime="application/pdf"
     )
 
-    # --- Botão para download do CSV ---
+    # CSV
     csv_bytes = df_final.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📥 Baixar resultados (CSV)",
