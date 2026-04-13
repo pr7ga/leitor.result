@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -386,4 +385,3 @@ if not df_final.empty:
         file_name="dados.csv",
         mime="text/csv"
     )
-```
